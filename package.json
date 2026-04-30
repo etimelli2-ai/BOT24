@@ -1,0 +1,13 @@
+{
+  "name": "msfs24-bot",
+  "version": "1.0.0",
+  "description": "Bot Discord setup serveur MSFS 2024 FR",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "discord.js": "^14.26.3"
+  }
+}
