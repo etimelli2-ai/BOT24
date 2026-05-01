@@ -14,7 +14,7 @@ function scheduleBump(channel) {
   console.log(`⏰ Prochain :bump dans ${Math.floor(delay / 3600000)}h`);
 
   bumpTimeout = setTimeout(async () => {
-    await channel.send(':bump').catch(() => {});
+    await channel.send('/bump').catch(() => {});
     scheduleBump(channel); // relance le cycle
   }, delay);
 }
