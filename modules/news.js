@@ -32,16 +32,20 @@ const DEVS = [
 
 // Mots-clés pour filtrer UNIQUEMENT les vrais updates/releases
 const UPDATE_KEYWORDS = [
-  'update', 'release', 'v1.', 'v2.', 'v3.', 'patch', 'hotfix',
+  'update', 'release', 'v1.', 'v2.', 'v3.', 'v4.', 'patch', 'hotfix',
   'changelog', 'new version', 'available now', 'out now', 'launched',
-  'mise à jour', 'sortie', 'disponible', 'livraison',
-  'msfs 2024', 'microsoft flight simulator',
-  'world update', 'sim update', 'game update',
+  'now available', 'just released', 'introducing', 'announcing',
+  'mise à jour', 'sortie', 'disponible', 'livraison', 'nouveauté',
+  'msfs 2024', 'msfs2024', 'microsoft flight simulator',
+  'world update', 'sim update', 'game update', 'preview', 'beta',
+  'early access', 'released', 'announced', 'new aircraft', 'new airport',
 ];
 
 function isUpdatePost(title, desc) {
-  const text = `${title} ${desc}`.toLowerCase();
-  return UPDATE_KEYWORDS.some(kw => text.includes(kw));
+  // Si le titre seul contient un mot clé c'est suffisant
+  const titleLow = title.toLowerCase();
+  const textLow = `${title} ${desc}`.toLowerCase();
+  return UPDATE_KEYWORDS.some(kw => titleLow.includes(kw) || textLow.includes(kw));
 }
 
 const posted = new Set();
@@ -65,8 +69,14 @@ async function parseFeed(dev) {
       const desc  = (block.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/) || block.match(/<description>(.*?)<\/description>/))?.[1]
                     ?.replace(/<[^>]+>/g, '').trim().slice(0, 200) || '';
 
-      if (title && link && isUpdatePost(title, desc)) {
-        items.push({ title, link, date, desc });
+      // Corrige les URLs relatives
+      let fullLink = link;
+      if (link && !link.startsWith('http')) {
+        const base = new URL(dev.url);
+        fullLink = `${base.origin}/${link.replace(/^\//, '')}`;
+      }
+      if (title && fullLink && isUpdatePost(title, desc)) {
+        items.push({ title, link: fullLink, date, desc });
       }
       if (items.length >= 2) break;
     }
@@ -97,8 +107,9 @@ async function checkNews(client) {
           .setColor(dev.color)
           .setAuthor({ name: `${dev.emoji} ${dev.name} — ${dev.type}` })
           .setTitle(item.title.slice(0, 256))
-          .setURL(item.link)
           .setTimestamp(item.date ? new Date(item.date) : new Date());
+
+        try { if (item.link) embed.setURL(item.link); } catch (_) {}
 
         if (item.desc) embed.setDescription(item.desc + (item.desc.length >= 200 ? '...' : ''));
 
