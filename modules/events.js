@@ -4,43 +4,54 @@ const REFRESH_INTERVAL = 30 * 60 * 1000;
 
 function formatDate(dateStr) {
   if (!dateStr) return 'N/A';
-  return new Date(dateStr).toLocaleDateString('fr-FR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', timeZone: 'UTC'
-  }) + ' UTC';
+  try {
+    return new Date(dateStr).toLocaleDateString('fr-FR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZone: 'UTC'
+    }) + ' UTC';
+  } catch { return dateStr; }
 }
 
 async function fetchVatsimEvents() {
   try {
     const res = await fetch('https://my.vatsim.net/api/v2/events/latest', {
-      headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(8000),
+      headers: { 'Accept': 'application/json', 'User-Agent': 'MSFS24-Bot/1.0' },
+      signal: AbortSignal.timeout(10000),
     });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
-    return (json.data || []).slice(0, 5);
+    const arr = Array.isArray(json) ? json : (json.data || json.events || []);
+    return arr.slice(0, 5);
   } catch (e) {
-    console.error('VATSIM events error:', e.message);
+    console.error('VATSIM error:', e.message);
     return [];
   }
 }
 
-async function fetchIvaoRSS() {
+async function fetchIvaoEvents() {
   try {
+    // Essaie le flux RSS public
     const res = await fetch('https://www.ivao.aero/rss/events.xml', {
-      signal: AbortSignal.timeout(8000),
+      headers: { 'User-Agent': 'Mozilla/5.0 MSFS24-Bot/1.0' },
+      signal: AbortSignal.timeout(10000),
     });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
+
     const items = [];
-    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    const tagRegex = /<(?:item|entry)>([\s\S]*?)<\/(?:item|entry)>/g;
     let match;
-    while ((match = itemRegex.exec(text)) !== null && items.length < 5) {
+
+    while ((match = tagRegex.exec(text)) !== null && items.length < 5) {
       const block = match[1];
-      const title = (block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/) || block.match(/<title>(.*?)<\/title>/))?.[1]?.trim();
-      const link  = block.match(/<link>(.*?)<\/link>/)?.[1]?.trim();
-      const date  = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1]?.trim();
-      const desc  = (block.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/) || block.match(/<description>(.*?)<\/description>/))?.[1]
+      const title = (block.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/) || block.match(/<title[^>]*>([\s\S]*?)<\/title>/))?.[1]?.trim();
+      const link  = block.match(/<link>(https?:\/\/[^<]+)<\/link>/)?.[1]?.trim() ||
+                    block.match(/<link[^>]+href="(https?:\/\/[^"]+)"/)?.[1]?.trim();
+      const date  = (block.match(/<pubDate>([\s\S]*?)<\/pubDate>/) || block.match(/<published>([\s\S]*?)<\/published>/))?.[1]?.trim();
+      const desc  = (block.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/) || block.match(/<description[^>]*>([\s\S]*?)<\/description>/))?.[1]
                     ?.replace(/<[^>]+>/g, '').trim().slice(0, 150);
-      if (title && link) items.push({ title, link, startAt: date, description: desc });
+
+      if (title) items.push({ title, link: link || 'https://www.ivao.aero/events', startAt: date, description: desc });
     }
     return items;
   } catch (e) {
@@ -57,7 +68,7 @@ async function postEvents(guild) {
   );
   if (!channel) return;
 
-  const [vatsimEvents, ivaoEvents] = await Promise.all([fetchVatsimEvents(), fetchIvaoRSS()]);
+  const [vatsimEvents, ivaoEvents] = await Promise.all([fetchVatsimEvents(), fetchIvaoEvents()]);
 
   // Supprime les anciens messages du bot
   try {
@@ -104,9 +115,9 @@ async function postEvents(guild) {
       ivaoEmbed.addFields({
         name: `✈️ ${(e.title || 'Sans titre').slice(0, 100)}`,
         value: [
-          e.startAt    ? `📅 **Publié :** ${formatDate(e.startAt)}` : '',
-          e.description ? `📝 ${e.description}` : '',
-          `🔗 [Voir l'event](${e.link || 'https://www.ivao.aero/events'})`,
+          e.startAt      ? `📅 **Date :** ${formatDate(e.startAt)}` : '',
+          e.description  ? `📝 ${e.description}` : '',
+          `🔗 [Voir l'event](${e.link})`,
         ].filter(Boolean).join('\n'),
       });
     }
